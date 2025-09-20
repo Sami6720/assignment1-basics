@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch
 from einops import repeat, reduce, rearrange, einsum
 from einx import get_at
+from typing import Union
 
 
 class Embedding(nn.Module):
@@ -112,16 +113,110 @@ class RoPE(nn.Module):
             rotation_matrix.append(torch.stack(along_T, dim=0))
 
         rotation_matrix = torch.stack(rotation_matrix, dim=0)
-        self.register_buffer("rotation_matrix", rotation_matrix)
+        self.register_buffer("rotation_matrix", rotation_matrix, persistent=False)
 
-    def forward(self, x: torch.Tensor, token_ids: torch.Tensor):
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor):
         # required_rotation_matrix = get_at("[t] d_k_by_2 2 in, ... indices -> ... indices d_k_by_2 2 in", self.rotation_matrix, token_ids)
         # required_rotation_matrix = get_at("[t] d_k_by_2 2 in, ... -> ... d_k_by_2 2 in", self.rotation_matrix, token_ids)
         # NOTE: Lesson for why the above didn't work is in einsum don't use numbers unless in rearrange as below
         print("rotation_matrix_shape: ", self.rotation_matrix.shape)
-        required_rotation_matrix = get_at("[p] n o i, ... t -> ... t n o i", self.rotation_matrix, token_ids)
+        required_rotation_matrix = get_at("[p] n o i, ... t -> ... t n o i", self.rotation_matrix, token_positions)
         x = rearrange(x, "... t (s d2) -> ... t s d2", s=self.rotation_matrix.shape[-3], d2=2)
         x = einsum(required_rotation_matrix, x, "... t n o in, ... t n in -> ... t n o")
         x = rearrange(x, "... t n o -> ... t (n o)")
 
         return x
+
+
+
+def softmax(x: torch.Tensor, dim: int = 0):
+
+    m = torch.max(x, dim=dim, keepdim=True)[0]
+    x -= m
+
+    x = torch.exp(x)
+
+    norm = torch.sum(x, dim=dim, keepdim=True)
+
+    return  x / norm
+
+
+
+class Attention(nn.Module):
+
+    def __init__(self):
+
+        super().__init__()
+
+    def forward(self, Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, mask=Union[torch.Tensor, None]):
+
+        import math
+
+        attn = einsum(K, Q, "b ... t1 d_k, b ... t2 d_k -> b ... t2 t1") * 1/math.sqrt(Q.shape[-1])
+
+        if mask is not None:
+            attn[mask == False] = float('-inf')
+
+        attn = softmax(attn, dim=-1)
+
+        # NOTE: How the output from the attention block depends on how many queries you had.
+
+        return einsum(attn, V, "b ... t2 t1, b ... t1 d_v -> b ... t2 d_v")
+
+
+
+class MultiHeadedCausalSelfAttention(nn.Module):
+
+    def __init__(self, d_model: int, num_heads: int, max_seq_len: int, theta=None, token_positions=None):
+        super().__init__()
+        self.d_model = d_model
+        self.num_heads = num_heads
+        assert self.d_model % self.num_heads == 0
+        self.d_k = d_model // num_heads # NOTE: Just by convention. Doesn't have to be this since we have out_proj matrix
+        self.Q = Linear(d_model, self.d_k * num_heads)
+        self.K = Linear(d_model, self.d_k * num_heads)
+        self.V = Linear(d_model, self.d_k * num_heads)
+        self.O = Linear(self.d_k * num_heads, d_model)
+        self.attn = Attention()
+
+        mask = torch.empty(max_seq_len, max_seq_len).fill_(1)
+        mask = torch.tril(mask)
+        mask = mask.bool()
+        self.register_buffer("mask", mask, persistent=False)
+
+        if theta:
+            self.rope = RoPE(theta, max_seq_len=max_seq_len, d_k=self.d_k)
+        else:
+            self.rope = None
+
+    def forward(self, x: torch.Tensor, token_positions: Union[torch.Tensor, None] = None):
+        """
+        x.shape B, T, d_model
+        """
+        B, T, d = x.shape
+
+        Q = self.Q(x)
+        K = self.K(x)
+        V = self.V(x)
+
+        Q = rearrange(Q, "b ... t (num_heads d_k) -> b ... num_heads t d_k", num_heads=self.num_heads, d_k=self.d_k)
+        K = rearrange(K, "b ... t (num_heads d_k) -> b ... num_heads t d_k", num_heads=self.num_heads, d_k=self.d_k)
+
+        if self.rope and token_positions is not None:
+            Q = self.rope.forward(Q, token_positions)
+            K = self.rope.forward(K, token_positions)
+
+        V = rearrange(V, "b ... t (num_heads d_k) -> b ... num_heads t d_k", num_heads=self.num_heads, d_k=self.d_k)
+
+
+        mask = self.mask[:T, :T]
+
+        # mask shape needs to be b num_heads t t
+        mask = repeat(mask, "t1 t2 -> b num_heads t1 t2", b=B, num_heads=self.num_heads)
+
+        attn_out = self.attn.forward(Q, K, V, mask) # b ... num_head t d_k
+
+        attn_out = rearrange(attn_out, "b ... num_heads t d_k -> b ... t (num_heads d_k)")
+
+        return self.O.forward(attn_out)
+
