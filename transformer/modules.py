@@ -119,10 +119,9 @@ class RoPE(nn.Module):
         # required_rotation_matrix = get_at("[t] d_k_by_2 2 in, ... indices -> ... indices d_k_by_2 2 in", self.rotation_matrix, token_ids)
         # required_rotation_matrix = get_at("[t] d_k_by_2 2 in, ... -> ... d_k_by_2 2 in", self.rotation_matrix, token_ids)
         # NOTE: Lesson for why the above didn't work is in einsum don't use numbers unless in rearrange as below
-        print("rotation_matrix_shape: ", self.rotation_matrix.shape)
         required_rotation_matrix = get_at("[p] n o i, ... t -> ... t n o i", self.rotation_matrix, token_positions)
         x = rearrange(x, "... t (s d2) -> ... t s d2", s=self.rotation_matrix.shape[-3], d2=2)
-        x = einsum(required_rotation_matrix, x, "... t n o in, ... t n in -> ... t n o")
+        x = einsum(required_rotation_matrix, x, "... t n o i, ... t n i -> ... t n o")
         x = rearrange(x, "... t n o -> ... t (n o)")
 
         return x
@@ -167,7 +166,7 @@ class Attention(nn.Module):
 
 class MultiHeadedCausalSelfAttention(nn.Module):
 
-    def __init__(self, d_model: int, num_heads: int, max_seq_len: int, theta=None, token_positions=None):
+    def __init__(self, d_model: int, num_heads: int, max_seq_len: int, theta=None):
         super().__init__()
         self.d_model = d_model
         self.num_heads = num_heads
@@ -220,3 +219,27 @@ class MultiHeadedCausalSelfAttention(nn.Module):
 
         return self.O.forward(attn_out)
 
+
+
+class TransformerBlock(nn.Module):
+
+    def __init__(self, d_model: int, num_heads: int, dff: int, max_seq_len: int, theta: int):
+        super().__init__()
+
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.dff = dff
+
+        self.ff = Swiglu(d_model, d_hidden=dff)
+        self.mha = MultiHeadedCausalSelfAttention(d_model, num_heads, max_seq_len, theta)
+        self.norm = RMSNorm(d_model)
+        self.norm2 = RMSNorm(d_model)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, T, D = x.shape
+
+        token_positions = repeat(torch.arange(0, T), "t -> b t", b=B)
+        x = x + self.mha(self.norm(x), token_positions)
+        x = x + self.ff(self.norm2(x))
+
+        return x
