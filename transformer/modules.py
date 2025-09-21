@@ -3,6 +3,7 @@ import torch
 from einops import repeat, reduce, rearrange, einsum
 from einx import get_at
 from typing import Union
+from jaxtyping import Float, Int
 
 
 class Embedding(nn.Module):
@@ -279,3 +280,21 @@ class TransformerLM(nn.Module):
 
         # x = softmax(x, dim=-1) #NOTE: softmax is done in the loss
         return x
+
+
+
+def cross_entropy(logits: Float[torch.Tensor, "... b v"], targets: Int[torch.Tensor, "... b"]):
+
+    # NOTE: The following results in neumerical instablity giving rise nan values.
+
+    # probs = softmax(logits, dim=-1)
+    # probs = get_at("... b [v], ... b -> ... b", probs, targets)
+    # loss = torch.mean(torch.log(probs) * -1)
+
+    logits -= logits.max(dim=-1, keepdim=True)[0]
+    e_logits = torch.exp(logits)
+    sum_exp = reduce(e_logits, "... b v -> ... b", "sum")
+    log_sum_exp = torch.log(sum_exp)
+    targets_ei = get_at("... b [v], ... b -> ... b", logits, targets)
+
+    return torch.mean(-1 * (targets_ei -  log_sum_exp))
