@@ -9,7 +9,7 @@ import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
-from transformer.modules import Linear, Embedding, RMSNorm, Swiglu, RoPE, softmax, Attention, MultiHeadedCausalSelfAttention
+from transformer.modules import Linear, Embedding, RMSNorm, Swiglu, RoPE, softmax, Attention, MultiHeadedCausalSelfAttention, TransformerBlock
 
 
 def run_linear(
@@ -308,7 +308,38 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    block = TransformerBlock(d_model, num_heads, d_ff, max_seq_len, theta).to(
+        device=in_features.device, dtype=in_features.dtype
+    )
+    block.eval()
+
+    # Helper to load linear weights, transposing if necessary
+    def load_linear(param: torch.nn.Parameter, w: torch.Tensor):
+        w = w.detach().to(param.device, dtype=param.dtype)
+        if w.shape == param.shape:
+            param.data.copy_(w)
+        elif w.T.shape == param.shape:
+            param.data.copy_(w.T)
+        else:
+            raise ValueError(f"Shape mismatch loading linear: got {tuple(w.shape)}, expected {tuple(param.shape)}")
+
+    # Attention projections
+    load_linear(block.mha.Q.W, weights["attn.q_proj.weight"])
+    load_linear(block.mha.K.W, weights["attn.k_proj.weight"])
+    load_linear(block.mha.V.W, weights["attn.v_proj.weight"])
+    load_linear(block.mha.O.W, weights["attn.output_proj.weight"])
+
+    # Norms
+    block.norm.g.data.copy_(weights["ln1.weight"].detach().to(block.norm.g.device, dtype=block.norm.g.dtype))
+    block.norm2.g.data.copy_(weights["ln2.weight"].detach().to(block.norm2.g.device, dtype=block.norm2.g.dtype))
+
+    # FFN (SwiGLU): w1, w3 (d_ff, d_model), w2 (d_model, d_ff) in our Linear(out,in) convention
+    load_linear(block.ff.w1.W, weights["ffn.w1.weight"])
+    load_linear(block.ff.w3.W, weights["ffn.w3.weight"])
+    load_linear(block.ff.w2.W, weights["ffn.w2.weight"])
+
+
+    return block(in_features)
 
 
 def run_transformer_lm(
