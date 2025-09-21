@@ -9,7 +9,7 @@ import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
-from transformer.modules import Linear, Embedding, RMSNorm, Swiglu, RoPE, softmax, Attention, MultiHeadedCausalSelfAttention, TransformerBlock
+from transformer.modules import Linear, Embedding, RMSNorm, Swiglu, RoPE, softmax, Attention, MultiHeadedCausalSelfAttention, TransformerBlock, TransformerLM
 
 
 def run_linear(
@@ -421,8 +421,47 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    model = TransformerLM(
+        d_model=d_model,
+        num_heads=num_heads,
+        dff=d_ff,
+        max_seq_len=context_length,
+        theta=rope_theta,
+        vocab_size=vocab_size,
+        num_layers=num_layers,
+    )
+    model.eval()
 
+    def load_linear(param: torch.nn.Parameter, w: torch.Tensor):
+        w = w.detach().to(param.device, dtype=param.dtype)
+        if w.shape == param.shape:
+            param.data.copy_(w)
+        elif w.T.shape == param.shape:
+            param.data.copy_(w.T)
+        else:
+            raise ValueError(f"Shape mismatch: got {tuple(w.shape)}, expected {tuple(param.shape)}")
+
+    # Token embeddings
+    model.embed.embeddings.data.copy_(weights["token_embeddings.weight"].detach().to(model.embed.embeddings.device, dtype=model.embed.embeddings.dtype))
+
+    # Layers
+    for i in range(num_layers):
+        block = model.blocks[i]
+        load_linear(block.mha.Q.W, weights[f"layers.{i}.attn.q_proj.weight"])
+        load_linear(block.mha.K.W, weights[f"layers.{i}.attn.k_proj.weight"])
+        load_linear(block.mha.V.W, weights[f"layers.{i}.attn.v_proj.weight"])
+        load_linear(block.mha.O.W, weights[f"layers.{i}.attn.output_proj.weight"])
+        block.norm.g.data.copy_(weights[f"layers.{i}.ln1.weight"].detach().to(block.norm.g.device, dtype=block.norm.g.dtype))
+        load_linear(block.ff.w1.W, weights[f"layers.{i}.ffn.w1.weight"])
+        load_linear(block.ff.w3.W, weights[f"layers.{i}.ffn.w3.weight"])
+        load_linear(block.ff.w2.W, weights[f"layers.{i}.ffn.w2.weight"])
+        block.norm2.g.data.copy_(weights[f"layers.{i}.ln2.weight"].detach().to(block.norm2.g.device, dtype=block.norm2.g.dtype))
+
+    # Final norm and LM head
+    model.norm.g.data.copy_(weights["ln_final.weight"].detach().to(model.norm.g.device, dtype=model.norm.g.dtype))
+    load_linear(model.out_embed.W, weights["lm_head.weight"])
+
+    return model(in_indices)
 
 def run_rmsnorm(
     d_model: int,

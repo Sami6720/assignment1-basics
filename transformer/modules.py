@@ -243,3 +243,39 @@ class TransformerBlock(nn.Module):
         x = x + self.ff(self.norm2(x))
 
         return x
+
+
+class TransformerLM(nn.Module):
+
+    def __init__(self, d_model: int, num_heads: int, dff: int, max_seq_len: int, theta: int, vocab_size: int, num_layers: int):
+
+        super().__init__()
+
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.dff = dff
+        self.vocab_size = vocab_size
+        self.num_layers = num_layers
+
+
+        self.embed = Embedding(vocab_size, d_model)
+        self.blocks = nn.ModuleList([
+            TransformerBlock(d_model, num_heads, dff, max_seq_len, theta)
+            for _ in range(num_layers)
+        ])
+
+        self.norm = RMSNorm(d_model)
+        self.out_embed = Linear(d_model, vocab_size)
+
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+
+        B, T = x.shape
+        x = self.embed(x)
+        for block in self.blocks:
+            x = block(x)
+        x = self.norm(x)
+        x = self.out_embed(x)
+
+        # x = softmax(x, dim=-1) #NOTE: softmax is done in the loss
+        return x
