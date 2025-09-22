@@ -4,6 +4,7 @@ from einops import repeat, reduce, rearrange, einsum
 from einx import get_at
 from typing import Union
 from jaxtyping import Float, Int
+import math
 
 
 class Embedding(nn.Module):
@@ -298,3 +299,60 @@ def cross_entropy(logits: Float[torch.Tensor, "... b v"], targets: Int[torch.Ten
     targets_ei = get_at("... b [v], ... b -> ... b", logits, targets)
 
     return torch.mean(-1 * (targets_ei -  log_sum_exp))
+
+
+
+class AdamW(torch.optim.Optimizer):
+
+    def __init__(self, params, lr, weight_decay, eps=10e-8, betas=(0.9, 0.999)):
+
+        defaults = {"lr": lr}
+        self.beta1 = betas[0]
+        self.beta2 = betas[1]
+        self.lr = lr
+        self.eps = eps
+        self.weight_decay = weight_decay
+
+        super().__init__(params, defaults)
+        #
+        # for group in self.param_groups:
+        #
+        #     for p in group["params"]:
+        #
+        #         self.state[p]["m"] = torch.zeros_like(p.data)
+        #         self.state[p]["t"] = 1
+                # self.state[p]["v"] = torch.zeros_like(p)
+
+
+    def step(self, closure=None):
+
+        loss = None if closure is None else closure()
+
+        for group in self.param_groups:
+            for p in group["params"]:
+                p: nn.Parameter
+                if not p.requires_grad:
+                    continue
+
+                state = self.state[p]
+                m = state.get("m", torch.zeros_like(p.data))
+                v = state.get("v", torch.zeros_like(p.data))
+                t = state.get("t", 1)
+
+                g = p.grad.data
+
+                m = self.beta1 * m + (1 - self.beta1) * g
+                v = self.beta2 * v + (1 - self.beta2) * torch.square(g)
+
+                step_size = self.lr * math.sqrt(1 - self.beta2 ** t)/ (1 - self.beta1 ** t)
+                update = m / (torch.sqrt(v) + self.eps)
+                p.data -= step_size * update
+                p.data -= self.lr * self.weight_decay * p.data
+
+                self.state[p]["m"] = m
+                self.state[p]["v"] = v
+                self.state[p]["t"] = t + 1
+
+        return loss
+
+
