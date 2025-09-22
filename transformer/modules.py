@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch
 from einops import repeat, reduce, rearrange, einsum
 from einx import get_at
-from typing import Union
+from typing import Union, Iterable
 from jaxtyping import Float, Int
 import math
 
@@ -329,6 +329,7 @@ class AdamW(torch.optim.Optimizer):
         loss = None if closure is None else closure()
 
         for group in self.param_groups:
+            lr = group["lr"]
             for p in group["params"]:
                 p: nn.Parameter
                 if not p.requires_grad:
@@ -344,10 +345,10 @@ class AdamW(torch.optim.Optimizer):
                 m = self.beta1 * m + (1 - self.beta1) * g
                 v = self.beta2 * v + (1 - self.beta2) * torch.square(g)
 
-                step_size = self.lr * math.sqrt(1 - self.beta2 ** t)/ (1 - self.beta1 ** t)
+                step_size = lr * math.sqrt(1 - self.beta2 ** t)/ (1 - self.beta1 ** t)
                 update = m / (torch.sqrt(v) + self.eps)
                 p.data -= step_size * update
-                p.data -= self.lr * self.weight_decay * p.data
+                p.data -= lr * self.weight_decay * p.data
 
                 self.state[p]["m"] = m
                 self.state[p]["v"] = v
@@ -356,3 +357,28 @@ class AdamW(torch.optim.Optimizer):
         return loss
 
 
+def cosine_annealing_lr(t: int, max_lr: float, min_lr: float, t_warmup: int, t_c: int):
+
+    if t < t_warmup:
+        return t/t_warmup * max_lr
+
+    if t_warmup <= t <= t_c:
+        return min_lr + (math.cos(math.pi * (t - t_warmup)/(t_c - t_warmup)) + 1) * (max_lr - min_lr)/2
+
+    if t > t_c:
+        return min_lr
+
+
+def gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float):
+
+    g = torch.stack([p.grad for p in parameters if p.requires_grad], dim=0).reshape(-1)
+    total = torch.linalg.norm(g)
+
+    if total <= max_l2_norm:
+        return
+
+    for param in parameters:
+        if not param.requires_grad:
+            continue
+
+        param.grad *= max_l2_norm / (total + 10e-6)
