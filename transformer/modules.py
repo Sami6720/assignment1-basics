@@ -5,6 +5,8 @@ from einx import get_at
 from typing import Union, Iterable
 from jaxtyping import Float, Int
 import math
+import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 
 
 class Embedding(nn.Module):
@@ -382,3 +384,24 @@ def gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: flo
             continue
 
         param.grad *= max_l2_norm / (total + 10e-6)
+
+# TODO: Could it be made more memory efficient. Do it later.
+def load_data(x: np.ndarray, context_length: int, batch_size: int, device: str):
+
+    assert x.shape[0] > context_length
+
+    B = sliding_window_view(x, context_length + 1)
+
+    X = B[:, :-1]
+    Y = B[:, 1:]
+
+    index = np.random.randint(0, x.shape[0] - context_length, batch_size)
+
+    X = get_at("[b] t, index -> index t", X, index)
+    Y = get_at("[b] t, index -> index t", Y, index)
+
+    X = torch.from_numpy(X).to(device)
+    Y = torch.from_numpy(Y).to(device)
+
+    return X, Y
+

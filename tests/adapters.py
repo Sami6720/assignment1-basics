@@ -9,7 +9,7 @@ import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
-from transformer.modules import Linear, Embedding, RMSNorm, Swiglu, RoPE, softmax, Attention, MultiHeadedCausalSelfAttention, TransformerBlock, TransformerLM, cross_entropy, AdamW, cosine_annealing_lr, gradient_clipping
+from transformer.modules import Linear, Embedding, RMSNorm, Swiglu, RoPE, softmax, Attention, MultiHeadedCausalSelfAttention, TransformerBlock, TransformerLM, cross_entropy, AdamW, cosine_annealing_lr, gradient_clipping, load_data
 
 
 def run_linear(
@@ -522,7 +522,8 @@ def run_get_batch(
         is the sampled input sequences, and the second tuple item is the corresponding
         language modeling labels.
     """
-    raise NotImplementedError
+
+    return load_data(dataset, context_length, batch_size, device)
 
 
 def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
