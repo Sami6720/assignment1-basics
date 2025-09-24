@@ -45,6 +45,7 @@ if __name__ == '__main__':
                         help="Learning rate")
     parser.add_argument("--checkpoint_path", type=str, default=None)
     parser.add_argument("--weight_decay", type=float, default=0.9)
+    parser.add_argument("--device", type=str, default="cpu")
 
     args = parser.parse_args()
 
@@ -63,6 +64,7 @@ if __name__ == '__main__':
         checkpoint_path = config["checkpoint_path"]
         weight_decay = config["weight_decay"]
         batch_size = config["batch_size"]
+        device = config["device"]
 
         import wandb
         wandb.init(
@@ -80,6 +82,10 @@ if __name__ == '__main__':
 
         # TODO: Need to figure out how to load the dataset.
         dataset = ...
+        validation_dataset = ...
+
+
+
 
         if checkpoint_path:
             model = load_checkpoint(model, optim, checkpoint_path)
@@ -87,7 +93,7 @@ if __name__ == '__main__':
         for i in range(config["num_epochs"]):
             for j in range(config["training_steps_per_epoch"]):
                 optim.zero_grad()
-                X, Y = get_batch(dataset, context_length, batch_size)
+                X, Y = get_batch(dataset, context_length, batch_size, device)
                 X = model(X)  # B, T, V
                 X = rearrange(X, "b t v -> t b v")
                 Y = rearrange(Y, "b t -> t b")
@@ -95,8 +101,17 @@ if __name__ == '__main__':
                 loss.backward()
                 optim.step()
 
-                wandb.log({
+                metric = {
                     "training_loss": loss.mean().item(),
                     "epoch": i,
                     "training_step_in_epoch": j
-                })
+                }
+
+                validate_interval = j % config["validate_every_x_steps"]
+                if validate_interval:
+                    X, Y = get_batch(validation_dataset, context_length, batch_size, device)
+                    X = model(X)  # B, T, V
+                    X = rearrange(X, "b t v -> t b v")
+                    Y = rearrange(Y, "b t -> t b")
+                    loss = cross_entropy(model(X), Y)
+                    metric["validation_loss"] = loss.mean().item()
