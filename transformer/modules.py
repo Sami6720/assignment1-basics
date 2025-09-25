@@ -386,22 +386,28 @@ def gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: flo
         param.grad *= max_l2_norm / (total + 10e-6)
 
 # TODO: Could it be made more memory efficient. Do it later.
-def load_data(x: np.ndarray, context_length: int, batch_size: int, device: str):
+def get_batch(x: np.ndarray, context_length: int, batch_size: int, device: str):
 
     assert x.shape[0] > context_length
+    assert len(x.shape) == 1
 
-    B = sliding_window_view(x, context_length + 1)
+    num_of_tokens = x.shape[0]
+    start_indices = np.random.randint(0, num_of_tokens - context_length, batch_size)
 
-    X = B[:, :-1]
-    Y = B[:, 1:]
+    offsets = np.arange(context_length)
 
-    index = np.random.randint(0, x.shape[0] - context_length, batch_size)
+    #NOTE: 
+    # offset = [0, 1] shape (2,)
+    # x_idx = [[0], [3], [5], [6], [2]] shape 5, 1
+    # broadcasting goes from right to left and offset is converted to (1, 2)
 
-    X = get_at("[b] t, index -> index t", X, index)
-    Y = get_at("[b] t, index -> index t", Y, index)
+    X_idx = start_indices[:, None] + offsets
+    Y_idx = X_idx + 1
+    X = x[X_idx]
+    Y = x[Y_idx]
 
-    X = torch.from_numpy(X).to(device)
     Y = torch.from_numpy(Y).to(device)
+    X = torch.from_numpy(X).to(device)
 
     return X, Y
 
