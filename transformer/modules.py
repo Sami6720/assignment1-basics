@@ -371,19 +371,19 @@ def cosine_annealing_lr(t: int, max_lr: float, min_lr: float, t_warmup: int, t_c
         return min_lr
 
 
-def gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float):
+def gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_grad_l2_norm: float):
 
     g = torch.stack([p.grad for p in parameters if p.requires_grad], dim=0).reshape(-1)
-    total = torch.linalg.norm(g)
+    actual_grad_l2_norm = torch.linalg.norm(g)
 
-    if total <= max_l2_norm:
+    if actual_grad_l2_norm <= max_grad_l2_norm:
         return
 
     for param in parameters:
         if not param.requires_grad:
             continue
 
-        param.grad *= max_l2_norm / (total + 10e-6)
+        param.grad *= max_grad_l2_norm / (actual_grad_l2_norm + 10e-6)
 
 # TODO: Could it be made more memory efficient. Do it later.
 def get_batch(x: np.ndarray, context_length: int, batch_size: int, device: str):
