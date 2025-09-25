@@ -9,7 +9,7 @@ import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
-from transformer.modules import Linear, Embedding, RMSNorm, Swiglu, RoPE, softmax, Attention, MultiHeadedCausalSelfAttention, TransformerBlock, TransformerLM, cross_entropy, AdamW, cosine_annealing_lr, gradient_clipping, load_data
+from transformer.modules import Linear, Embedding, RMSNorm, Swiglu, RoPE, softmax, Attention, MultiHeadedCausalSelfAttention, TransformerBlock, TransformerLM, cross_entropy, AdamW, cosine_annealing_lr, gradient_clipping, get_batch, save_checkpoint, load_checkpoint
 
 
 def run_linear(
@@ -523,7 +523,7 @@ def run_get_batch(
         language modeling labels.
     """
 
-    return load_data(dataset, context_length, batch_size, device)
+    return get_batch(dataset, context_length, batch_size, device)
 
 
 def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
@@ -628,7 +628,7 @@ def run_save_checkpoint(
             we've completed.
         out (str | os.PathLike | BinaryIO | IO[bytes]): Path or file-like object to serialize the model, optimizer, and iteration to.
     """
-    raise NotImplementedError
+    save_checkpoint(model, optimizer, iteration, out)
 
 
 def run_load_checkpoint(
@@ -649,7 +649,7 @@ def run_load_checkpoint(
     Returns:
         int: the previously-serialized number of iterations.
     """
-    raise NotImplementedError
+    return load_checkpoint(model, optimizer, src)
 
 
 def get_tokenizer(
