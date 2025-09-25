@@ -81,11 +81,8 @@ if __name__ == '__main__':
         optim = AdamW(model.parameters(), weight_decay)
 
         # TODO: Need to figure out how to load the dataset.
-        dataset = ...
-        validation_dataset = ...
-
-
-
+        dataset = np.load("tinystories_train.npy", mmap_mode='r')
+        validation_dataset = np.load("tinystories_val.npy", mmap_mode='r')
 
         if checkpoint_path:
             model = load_checkpoint(model, optim, checkpoint_path)
