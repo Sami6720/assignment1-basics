@@ -411,3 +411,24 @@ def get_batch(x: np.ndarray, context_length: int, batch_size: int, device: str):
 
     return X, Y
 
+def save_checkpoint(model: nn.Module, optimizer: torch.optim.Optimizer, iteration: int, out):
+
+
+    ckpt = {
+            "model_state": model.state_dict(),
+            "optim_state": optimizer.state_dict(),
+            "iteration": iteration,
+    }
+
+    torch.save(ckpt, out)
+
+
+
+def load_checkpoint(model: nn.Module, optimizer: torch.optim.Optimizer, src):
+
+    ckpt = torch.load(src)
+
+    model = model.load_state_dict(ckpt["model_state"])
+    optim = optimizer.load_state_dict(ckpt["optim_state"])
+
+    return ckpt["iteration"]
