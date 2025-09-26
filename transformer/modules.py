@@ -123,9 +123,9 @@ class RoPE(nn.Module):
         # required_rotation_matrix = get_at("[t] d_k_by_2 2 in, ... indices -> ... indices d_k_by_2 2 in", self.rotation_matrix, token_ids)
         # required_rotation_matrix = get_at("[t] d_k_by_2 2 in, ... -> ... d_k_by_2 2 in", self.rotation_matrix, token_ids)
         # NOTE: Lesson for why the above didn't work is in einsum don't use numbers unless in rearrange as below
-        required_rotation_matrix = get_at("[p] n o i, ... t -> ... t n o i", self.rotation_matrix, token_positions)
+        required_rotation_matrix = get_at("[p] n o i, b t -> b t n o i", self.rotation_matrix, token_positions)
         x = rearrange(x, "... t (s d2) -> ... t s d2", s=self.rotation_matrix.shape[-3], d2=2)
-        x = einsum(required_rotation_matrix, x, "... t n o i, ... t n i -> ... t n o")
+        x = einsum(required_rotation_matrix, x, "b t n o i, b ... t n i -> b ... t n o")
         x = rearrange(x, "... t n o -> ... t (n o)")
 
         return x
