@@ -25,14 +25,14 @@ def train(config):
         device = config["device"]
 
         import wandb
-        # wandb.init(
-        #     name=config["job_name"],
-        #     config=config,
-        #     entity=config["wandb_entity"],
-        #     project=config["wandb_project"],
-        #     mode=config['wandb_mode'],
-        #     save_code=True
-        # )
+        wandb.init(
+            name=config["job_name"],
+            config=config,
+            entity='doina-precup',
+            project='cs-336-assignment-1',
+            mode='online',
+            save_code=True
+        )
 
         model = TransformerLM(d_model, num_heads, d_ff,
                               context_length, rope_theta, vocab_size, num_layers)
@@ -46,6 +46,7 @@ def train(config):
             model = load_checkpoint(model, optim, checkpoint_path)
 
         model.to(device)
+        config["training_steps_per_epoch"] = (total_tokens // batch_size) // context_length
         for i in range(config["num_epochs"]):
             for j in range(config["training_steps_per_epoch"]):
                 optim.zero_grad()
@@ -71,6 +72,8 @@ def train(config):
                     Y = rearrange(Y, "b t -> t b")
                     loss = cross_entropy(model(X), Y)
                     metric["validation_loss"] = loss.mean().item()
+                if (j + 1) % config["wandb_log_interval"] == 0:
+                    wandb.log(metric)
 
 if __name__ == '__main__':
 
@@ -98,9 +101,6 @@ if __name__ == '__main__':
     parser.add_argument("--num_epochs", type=int, default=4,
                         help="Num of training epochs")
 
-    parser.add_argument("--training_steps_per_epoch", type=int, default=4,
-                        help="Training steps per epoch.")
-
     parser.add_argument("--num_heads", type=int, default=16,
                         help="Number of attention heads.")
 
@@ -109,7 +109,11 @@ if __name__ == '__main__':
 
     parser.add_argument("--total_tokens", type=int, default=327_680_000,
                         help="Total tokens processed (batch_size × steps × context_length).")
-    parser.add_argument("--validate_every_x_steps", type=int, default=327_680_000,
+
+
+    parser.add_argument("--wandb_log_interval", type=int, default=100,
+                        help="Wandb log interval")
+    parser.add_argument("--validate_every_x_steps", type=int, default=10_000,
                         help="How often to validate.")
 
     parser.add_argument("--lr", type=float, default=1e-4,
