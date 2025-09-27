@@ -7,6 +7,7 @@ from jaxtyping import Float, Int
 import math
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
+from tokenizers import Tokenizer, models, trainers, pre_tokenizers
 
 
 class Embedding(nn.Module):
@@ -132,7 +133,9 @@ class RoPE(nn.Module):
 
 
 
-def softmax(x: torch.Tensor, dim: int = 0):
+def softmax(x: torch.Tensor, dim: int = 0, temp: float = 1):
+
+    x = x/temp
 
     m = torch.max(x, dim=dim, keepdim=True)[0]
     x -= m
@@ -251,7 +254,7 @@ class TransformerBlock(nn.Module):
 
 class TransformerLM(nn.Module):
 
-    def __init__(self, d_model: int, num_heads: int, dff: int, max_seq_len: int, theta: int, vocab_size: int, num_layers: int):
+    def __init__(self, d_model: int, num_heads: int, dff: int, max_seq_len: int, theta: int, vocab_size: int, num_layers: int, tokenizer: Tokenizer = None):
 
         super().__init__()
 
@@ -271,6 +274,8 @@ class TransformerLM(nn.Module):
         self.norm = RMSNorm(d_model)
         self.out_embed = Linear(d_model, vocab_size)
 
+        self.tokenizer = tokenizer
+
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
 
@@ -284,6 +289,45 @@ class TransformerLM(nn.Module):
         # x = softmax(x, dim=-1) #NOTE: softmax is done in the loss
         return x
 
+
+    def generate_one_token(self, input_tokens: torch.Tensor, strategy: str = 'temp_scaled_softmax', temp: float = 0.1, p: float = 1.0):
+
+        # assert len(input_tokens.shape) == 1
+
+        probability_dist_over_V = self.forward(input_tokens)
+        next_token_logits = probability_dist_over_V[..., -1, :]
+        next_token_prob = rearrange(softmax(next_token_logits, dim=-1, temp=temp), "... t v ->  ... v", t=1)
+
+        if strategy == 'temp_scaled_softmax':
+            return torch.distributions.Categorical(probs=next_token_prob).sample()
+
+        if strategy == 'top_p':
+            next_token_prob_sorted = torch.sort(next_token_prob, dim=-1, descending=True)
+            next_token_prob_sorted_args = torch.argsort(next_token_prob, dim=-1, descending=True)
+            cumul_sum = torch.cumsum(next_token_prob_sorted, dim=-1)
+            mask = (cumul_sum > p)
+            last_token_to_include = torch.argmax(mask, dim=-1)
+            next_token_prob_sorted_relevant = next_token_prob_sorted[:last_token_to_include + 1]
+            next_token_prob_sorted_relevant /= torch.sum(next_token_prob_sorted_relevant).item()
+            next_token_prob_sorted_args_relevant = next_token_prob_sorted_args[:last_token_to_include + 1]
+            return next_token_prob_sorted_args_relevant[torch.distributions.Categorical(probs=next_token_prob_sorted_relevant).sample()]
+
+    def generate(self, input_prompt:str, strategy: str = 'temp_scaled_softmax', temp: float = 1, max_generation_len: int = 1000):
+
+        t = 0
+        input_tokens = self.tokenizer.encode(input_prompt)
+        input_tokens = torch.Tensor(input_tokens)
+
+        while True:
+            o = self.generate_one_token(input_tokens).item()
+            input_tokens = torch.cat(input_tokens, o, dim=-1)
+            t += 1
+            if o == self.tokenizer.decode([o])[0]:
+                break
+            if t == max_generation_len:
+                break
+
+        return self.tokenizer.decode(list(input_tokens))
 
 
 def cross_entropy(logits: Float[torch.Tensor, "... b v"], targets: Int[torch.Tensor, "... b"]):
