@@ -45,6 +45,7 @@ def train(config):
         if checkpoint_path:
             model = load_checkpoint(model, optim, checkpoint_path)
 
+        model.to(device)
         for i in range(config["num_epochs"]):
             for j in range(config["training_steps_per_epoch"]):
                 optim.zero_grad()

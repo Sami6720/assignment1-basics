@@ -87,5 +87,5 @@ if __name__ == '__main__':
                           context_length, rope_theta, vocab_size, num_layers, tokenizer=tokenizer)
     model.eval()
 
-    print(model.generate("Hello", max_generation_len=20))
+    print(model.generate("<bos>", max_generation_len=20))
 
