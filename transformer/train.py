@@ -7,6 +7,7 @@ from transformer.modules import (Linear, Embedding, RMSNorm, Swiglu, RoPE, softm
                                  TransformerLM, cross_entropy, AdamW, cosine_annealing_lr, gradient_clipping, get_batch, save_checkpoint, load_checkpoint)
 from einops import rearrange, reduce, repeat
 from einx import get_at
+from transformers import PreTrainedTokenizerFast
 
 def train(config):
 
@@ -36,6 +37,14 @@ def train(config):
 
         model = TransformerLM(d_model, num_heads, d_ff,
                               context_length, rope_theta, vocab_size, num_layers)
+
+        if args.get("tokenizer_dir"):
+            tok = PreTrainedTokenizerFast.from_pretrained(args["tokenizer_dir"])
+        # attach to model so model.generate can use it
+        if tok is not None:
+            model.tokenizer = tok
+            model.eot_id = tok.convert_tokens_to_ids("<|endoftext|>")
+
         optim = AdamW(model.parameters(), config["lr"], weight_decay)
 
         # TODO: Need to figure out how to load the dataset.
@@ -51,6 +60,8 @@ def train(config):
             for j in range(config["training_steps_per_epoch"]):
                 optim.zero_grad()
                 X, Y = get_batch(dataset, context_length, batch_size, device)
+                X = X.long().to(device)
+                Y = Y.long().to(device)
                 X = model(X)  # B, T, V
                 X = rearrange(X, "b t v -> t b v")
                 Y = rearrange(Y, "b t -> t b")
@@ -65,15 +76,33 @@ def train(config):
                 }
 
                 validate_interval = j % config["validate_every_x_steps"]
-                if validate_interval:
-                    X, Y = get_batch(validation_dataset, context_length, batch_size, device)
-                    X = model(X)  # B, T, V
-                    X = rearrange(X, "b t v -> t b v")
-                    Y = rearrange(Y, "b t -> t b")
-                    loss = cross_entropy(model(X), Y)
-                    metric["validation_loss"] = loss.mean().item()
+                # if validate_interval:
+                #     X, Y = get_batch(validation_dataset, context_length, batch_size, device)
+                #     X = model(X)  # B, T, V
+                #     X = rearrange(X, "b t v -> t b v")
+                #     Y = rearrange(Y, "b t -> t b")
+                #     loss = cross_entropy(model(X), Y)
+                #     metric["validation_loss"] = loss.mean().item()
+
+
                 if (j + 1) % config["wandb_log_interval"] == 0:
                     wandb.log(metric)
+
+                if ((j+1) % args["sample_every"]) == 0:
+                    prompt = args.get("sample_prompt", "<|endoftext|>")
+                    # you can switch strategy: 'temp_scaled_softmax' or 'top_p'
+                    text = model.generate(
+                        input_prompt=prompt,
+                        strategy=args.get("gen_strategy", "temp_scaled_softmax"),
+                        temp=args.get("temp", 0.8),
+                        max_generation_len=args.get("max_new_tokens", 128),
+                    )
+
+                    wandb.log(
+                        {"samples/text": wandb.Html(f"<pre>{text}</pre>"), "samples/prompt": prompt},
+                        step=j
+                    )
+                    print(f"Training step {j + 1}, sample generation: {text}")
 
 if __name__ == '__main__':
 
@@ -122,6 +151,15 @@ if __name__ == '__main__':
     parser.add_argument("--job_name", type=str, default="debug")
     parser.add_argument("--weight_decay", type=float, default=0.9)
     parser.add_argument("--device", type=str, default="cpu")
+
+    parser.add_argument("--tokenizer_dir", type=str, default="tok_tinystories")
+    parser.add_argument("--sample_every", type=int, default=10)
+    parser.add_argument("--sample_prompt", type=str, default="<|endoftext|>")
+    parser.add_argument("--gen_strategy", type=str, default="temp_scaled_softmax", choices=["temp_scaled_softmax","top_p"])
+    parser.add_argument("--temp", type=float, default=0.8)
+    parser.add_argument("--top_p", type=float, default=0.9)
+    parser.add_argument("--max_new_tokens", type=int, default=128)
+
 
     args = vars(parser.parse_args())
 
