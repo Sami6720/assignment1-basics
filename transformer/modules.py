@@ -254,7 +254,7 @@ class TransformerBlock(nn.Module):
 
 class TransformerLM(nn.Module):
 
-    def __init__(self, d_model: int, num_heads: int, dff: int, max_seq_len: int, theta: int, vocab_size: int, num_layers: int, tokenizer: Tokenizer = None):
+    def __init__(self, d_model: int, num_heads: int, dff: int, max_seq_len: int, theta: int, vocab_size: int, num_layers: int, tokenizer: Tokenizer = None, device: str = 'cpu'):
 
         super().__init__()
 
@@ -276,6 +276,7 @@ class TransformerLM(nn.Module):
 
         self.tokenizer = tokenizer
 
+        self.device = device
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
 
@@ -294,21 +295,27 @@ class TransformerLM(nn.Module):
 
         # assert len(input_tokens.shape) == 1
 
-        probability_dist_over_V = self.forward(input_tokens)
+        if len(input_tokens.shape) == 1:
+            input_tokens = input_tokens[None, :]
+
+        with torch.no_grad():
+            probability_dist_over_V = self.forward(input_tokens)
+
         next_token_logits = probability_dist_over_V[..., -1, :]
-        next_token_prob = rearrange(softmax(next_token_logits, dim=-1, temp=temp), "... t v ->  ... v", t=1)
+        next_token_prob = rearrange(softmax(next_token_logits, dim=-1, temp=temp), "... t v ->  ... (t v)", t=1)
 
         if strategy == 'temp_scaled_softmax':
             return torch.distributions.Categorical(probs=next_token_prob).sample()
 
         if strategy == 'top_p':
-            next_token_prob_sorted = torch.sort(next_token_prob, dim=-1, descending=True)
-            next_token_prob_sorted_args = torch.argsort(next_token_prob, dim=-1, descending=True)
+            sort_res = torch.sort(next_token_prob, dim=-1, descending=True)
+            next_token_prob_sorted = sort_res.values
+            next_token_prob_sorted_args = sort_res.indices
             cumul_sum = torch.cumsum(next_token_prob_sorted, dim=-1)
-            mask = (cumul_sum > p)
+            mask = (cumul_sum > p).to(int)
             last_token_to_include = torch.argmax(mask, dim=-1)
             next_token_prob_sorted_relevant = next_token_prob_sorted[:last_token_to_include + 1]
-            next_token_prob_sorted_relevant /= torch.sum(next_token_prob_sorted_relevant).item()
+            next_token_prob_sorted_relevant /= torch.sum(next_token_prob_sorted_relevant, dim=-1)
             next_token_prob_sorted_args_relevant = next_token_prob_sorted_args[:last_token_to_include + 1]
             return next_token_prob_sorted_args_relevant[torch.distributions.Categorical(probs=next_token_prob_sorted_relevant).sample()]
 
@@ -316,18 +323,23 @@ class TransformerLM(nn.Module):
 
         t = 0
         input_tokens = self.tokenizer.encode(input_prompt)
-        input_tokens = torch.Tensor(input_tokens)
+        input_tokens = torch.Tensor(input_tokens).to(self.device).to(int)
+        output_tokens = []
 
         while True:
-            o = self.generate_one_token(input_tokens).item()
-            input_tokens = torch.cat(input_tokens, o, dim=-1)
+            o = self.generate_one_token(input_tokens, strategy='top_p')
+            o_t = torch.Tensor([o]).to(int)
+            input_tokens = torch.cat((input_tokens, o_t), dim=-1)
+            output_tokens.append(o)
+            print(output_tokens)
             t += 1
-            if o == self.tokenizer.decode([o])[0]:
+            # print("Decode", self.tokenizer.decode(list(o)))
+            if self.tokenizer.decode([o], skip_special_tokens=False) == '<eos>':
                 break
             if t == max_generation_len:
                 break
 
-        return self.tokenizer.decode(list(input_tokens))
+        return self.tokenizer.decode(output_tokens)
 
 
 def cross_entropy(logits: Float[torch.Tensor, "... b v"], targets: Int[torch.Tensor, "... b"]):
