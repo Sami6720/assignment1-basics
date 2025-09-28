@@ -160,7 +160,7 @@ if __name__ == '__main__':
 
     parser.add_argument("--wandb_log_interval", type=int, default=100,
                         help="Wandb log interval")
-    parser.add_argument("--validate_every_x_steps", type=int, default=10_000,
+    parser.add_argument("--validate_every_x_steps", type=int, default=1000,
                         help="How often to validate.")
 
     parser.add_argument("--lr", type=float, default=1e-4,
