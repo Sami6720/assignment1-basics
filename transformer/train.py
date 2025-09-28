@@ -51,13 +51,17 @@ def train(config):
         dataset = np.load("tinystories_train.npy", mmap_mode='r')
         validation_dataset = np.load("tinystories_val.npy", mmap_mode='r')
 
+        best_val_loss = float('inf')
+
         if checkpoint_path:
             model = load_checkpoint(model, optim, checkpoint_path)
 
         model.to(device)
         config["training_steps_per_epoch"] = (total_tokens // batch_size) // context_length
+        global_step = 0
         for i in range(config["num_epochs"]):
             for j in range(config["training_steps_per_epoch"]):
+                global_step += 1
                 optim.zero_grad()
                 X, Y = get_batch(dataset, context_length, batch_size, device)
                 X = X.long().to(device)
@@ -76,19 +80,33 @@ def train(config):
                 }
 
                 validate_interval = j % config["validate_every_x_steps"]
-                # if validate_interval:
-                #     X, Y = get_batch(validation_dataset, context_length, batch_size, device)
-                #     X = model(X)  # B, T, V
-                #     X = rearrange(X, "b t v -> t b v")
-                #     Y = rearrange(Y, "b t -> t b")
-                #     loss = cross_entropy(model(X), Y)
-                #     metric["validation_loss"] = loss.mean().item()
+                if validate_interval:
+                    # X, Y = get_batch(validation_dataset, context_length, batch_size, device)
+                    # X = model(X)  # B, T, V
+                    # X = rearrange(X, "b t v -> t b v")
+                    # Y = rearrange(Y, "b t -> t b")
+                    # val_loss = cross_entropy(model(X), Y)
+                    # metric["validation_loss"] = loss.mean().item()
+                    # if val_loss < best_val_loss:
+                    #     best_val = val_loss
+                    #     import os
+                    #     best_path = os.path.join(config["ckpt_dir"], config['job_name'], "best.pt")
+                    #     save_checkpoint(model, optim, best_path)
+                    #     wandb.log({"ckpt/best_val": best_val}, step=global_step)
+                    pass
+
+                # ---- Periodic checkpoint
+                if global_step % config["ckpt_every"] == 0:
+                    import os
+                    path = os.path.join(config["ckpt_dir"], config['job_name'],f"step_{global_step}.pt")
+                    save_checkpoint(model, optim, global_step, path)
+
 
 
                 if (j + 1) % config["wandb_log_interval"] == 0:
                     wandb.log(metric)
 
-                if ((j+1) % args["sample_every"]) == 0:
+                if ((j+1) % config["sample_every"]) == 0:
                     prompt = args.get("sample_prompt", "<|endoftext|>")
                     # you can switch strategy: 'temp_scaled_softmax' or 'top_p'
                     text = model.generate(
@@ -100,9 +118,9 @@ def train(config):
 
                     wandb.log(
                         {"samples/text": wandb.Html(f"<pre>{text}</pre>"), "samples/prompt": prompt},
-                        step=j
+                        step=global_step
                     )
-                    print(f"Training step {j + 1}, sample generation: {text}")
+                    # print(f"Training step {j + 1}, sample generation: {text}")
 
 if __name__ == '__main__':
 
@@ -159,6 +177,8 @@ if __name__ == '__main__':
     parser.add_argument("--temp", type=float, default=0.8)
     parser.add_argument("--top_p", type=float, default=0.9)
     parser.add_argument("--max_new_tokens", type=int, default=128)
+    parser.add_argument("--ckpt_dir", type=str, default="ckpts")
+    parser.add_argument("--ckpt_every", type=int, default=2000)
 
 
     args = vars(parser.parse_args())

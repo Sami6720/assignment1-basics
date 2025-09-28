@@ -468,6 +468,10 @@ def get_batch(x: np.ndarray, context_length: int, batch_size: int, device: str):
 
 def save_checkpoint(model: nn.Module, optimizer: torch.optim.Optimizer, iteration: int, out):
 
+    from pathlib import Path
+
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
 
     ckpt = {
             "model_state": model.state_dict(),
