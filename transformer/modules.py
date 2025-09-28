@@ -323,15 +323,14 @@ class TransformerLM(nn.Module):
 
         t = 0
         input_tokens = self.tokenizer.encode(input_prompt, add_special_tokens=True)
+        output_tokens = input_tokens
         input_tokens = torch.Tensor(input_tokens).to(self.device).to(int)
-        output_tokens = []
 
         while True:
             o = self.generate_one_token(input_tokens, strategy='top_p')
             o_t = torch.Tensor([o]).to(int)
             input_tokens = torch.cat((input_tokens, o_t), dim=-1)
             output_tokens.append(o)
-            print(output_tokens)
             t += 1
             # print("Decode", self.tokenizer.decode(list(o)))
             if self.tokenizer.decode([o], skip_special_tokens=False) == '<eos>':
