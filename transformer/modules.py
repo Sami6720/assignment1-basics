@@ -333,7 +333,7 @@ class TransformerLM(nn.Module):
             output_tokens.append(o)
             t += 1
             # print("Decode", self.tokenizer.decode(list(o)))
-            if self.tokenizer.decode([o], skip_special_tokens=False) == '<eos>':
+            if o == self.eot_id:
                 break
             if t == max_generation_len:
                 break
@@ -472,6 +472,7 @@ def save_checkpoint(model: nn.Module, optimizer: torch.optim.Optimizer, iteratio
 
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
+
 
     ckpt = {
             "model_state": model.state_dict(),
