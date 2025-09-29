@@ -1,5 +1,5 @@
 from datasets import load_dataset
-from tokenizers import Tokenizer, models, trainers, pre_tokenizers
+from tokenizers import Tokenizer, models, trainers, pre_tokenizers, decoders
 from tokenizers.pre_tokenizers import ByteLevel
 from transformers import PreTrainedTokenizerFast
 import numpy as np
@@ -16,6 +16,7 @@ val_texts = dataset["test"]["text"]
 # Train byte-level BPE with TinyStories
 tokenizer = Tokenizer(models.BPE(unk_token=None))
 tokenizer.pre_tokenizer = ByteLevel(add_prefix_space=False)
+tokenizer.decoder = decoders.ByteLevel()
 trainer = trainers.BpeTrainer(
     vocab_size=10_000,
     initial_alphabet=ByteLevel.alphabet(),
