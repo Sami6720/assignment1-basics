@@ -361,7 +361,7 @@ def cross_entropy(logits: Float[torch.Tensor, "... b v"], targets: Int[torch.Ten
 
 class AdamW(torch.optim.Optimizer):
 
-    def __init__(self, params, lr, weight_decay, eps=10e-8, betas=(0.9, 0.999)):
+    def __init__(self, params, lr, weight_decay, eps=1e-8, betas=(0.9, 0.999), use_cosine_lr_sched: bool = False):
 
         defaults = {"lr": lr}
         self.beta1 = betas[0]
@@ -369,6 +369,7 @@ class AdamW(torch.optim.Optimizer):
         self.lr = lr
         self.eps = eps
         self.weight_decay = weight_decay
+        self.use_cosine_lr_sched = use_cosine_lr_sched
 
         super().__init__(params, defaults)
         #
@@ -401,6 +402,9 @@ class AdamW(torch.optim.Optimizer):
 
                 m = self.beta1 * m + (1 - self.beta1) * g
                 v = self.beta2 * v + (1 - self.beta2) * torch.square(g)
+
+                # if self.use_cosine_lr_sched:
+                #     lr = cosine_annealing_lr(
 
                 step_size = lr * math.sqrt(1 - self.beta2 ** t)/ (1 - self.beta1 ** t)
                 update = m / (torch.sqrt(v) + self.eps)
@@ -438,7 +442,7 @@ def gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_grad_l2_norm
         if not param.requires_grad:
             continue
 
-        param.grad *= max_grad_l2_norm / (actual_grad_l2_norm + 10e-6)
+        param.grad *= max_grad_l2_norm / (actual_grad_l2_norm + 1e-6)
 
 # TODO: Could it be made more memory efficient. Do it later.
 def get_batch(x: np.ndarray, context_length: int, batch_size: int, device: str):
