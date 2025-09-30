@@ -6,7 +6,7 @@ import numpy as np
 import os
 
 # 1. Load TinyStories dataset
-dataset = load_dataset("roneneldan/TinyStories", split="train[:10]")
+dataset = load_dataset("roneneldan/TinyStories", split="train")
 
 # Make a train/val split (e.g., 90/10)
 dataset = dataset.train_test_split(test_size=0.1, seed=42)
