@@ -108,7 +108,7 @@ def train(config):
 
 
                 if (j + 1) % config["wandb_log_interval"] == 0:
-                    wandb.log(metric)
+                    wandb.log(metric, step=global_step)
 
                 if ((j+1) % config["sample_every"]) == 0:
                     prompt = args.get("sample_prompt", "<|endoftext|>")
