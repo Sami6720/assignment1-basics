@@ -8,8 +8,8 @@
 module load httpproxy
 source .venv/bin/activate
 
+echo $(pwd)
+
 echo "Python command being run is $1"
 
-"$1"
-
-
+$1
