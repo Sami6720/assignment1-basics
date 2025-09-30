@@ -8,6 +8,8 @@ from transformer.modules import (Linear, Embedding, RMSNorm, Swiglu, RoPE, softm
 from einops import rearrange, reduce, repeat
 from einx import get_at
 from transformers import PreTrainedTokenizerFast
+import os
+from time import time
 
 def train(config):
 
@@ -58,12 +60,15 @@ def train(config):
 
         model.to(device)
         config["training_steps_per_epoch"] = (total_tokens // batch_size) // context_length
+        print("Config training steps per epoch", config["training_steps_per_epoch"])
         global_step = 0
         for i in range(config["num_epochs"]):
             for j in range(config["training_steps_per_epoch"]):
                 global_step += 1
                 optim.zero_grad()
+                # t_b = time()
                 X, Y = get_batch(dataset, context_length, batch_size, device)
+                # print(f"Time taken for loading for step {j} is {time() - t_b}")
                 X = X.long().to(device)
                 Y = Y.long().to(device)
                 X = model(X)  # B, T, V
@@ -97,7 +102,6 @@ def train(config):
 
                 # ---- Periodic checkpoint
                 if global_step % config["ckpt_every"] == 0:
-                    import os
                     path = os.path.join(config["ckpt_dir"], config['job_name'],f"step_{global_step}.pt")
                     save_checkpoint(model, optim, global_step, path)
 
