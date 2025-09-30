@@ -76,6 +76,9 @@ def train(config):
                 Y = rearrange(Y, "b t -> t b")
                 loss = cross_entropy(X, Y)
                 loss.backward()
+
+                # if config["use_gradient_clipping"]:
+                    # gradient_clipping(model.parameters(), 
                 optim.step()
 
                 metric = {
@@ -160,19 +163,18 @@ if __name__ == '__main__':
 
     parser.add_argument("--total_tokens", type=int, default=327_680_000,
                         help="Total tokens processed (batch_size × steps × context_length).")
-
+    parser.add_argument("--lr", type=float, default=1e-4,
+                        help="Learning rate")
+    parser.add_argument("--weight_decay", type=float, default=1e-2)
 
     parser.add_argument("--wandb_log_interval", type=int, default=100,
                         help="Wandb log interval")
     parser.add_argument("--validate_every_x_steps", type=int, default=1000,
                         help="How often to validate.")
 
-    parser.add_argument("--lr", type=float, default=1e-4,
-                        help="Learning rate")
     parser.add_argument("--checkpoint_path", type=str, default=None)
     parser.add_argument("--job_name", type=str, default="debug")
-    parser.add_argument("--weight_decay", type=float, default=0.9)
-    parser.add_argument("--device", type=str, default="cpu")
+    parser.add_argument("--device", type=str, default="cuda")
 
     parser.add_argument("--tokenizer_dir", type=str, default="tok_tinystories")
     parser.add_argument("--sample_every", type=int, default=10)
