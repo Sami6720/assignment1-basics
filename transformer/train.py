@@ -84,21 +84,21 @@ def train(config):
                     "training_step_in_epoch": j
                 }
 
-                validate_interval = j % config["validate_every_x_steps"]
+                validate_interval = (j + 1) % config["validate_every_x_steps"] == 0
                 if validate_interval:
-                    # X, Y = get_batch(validation_dataset, context_length, batch_size, device)
-                    # X = model(X)  # B, T, V
-                    # X = rearrange(X, "b t v -> t b v")
-                    # Y = rearrange(Y, "b t -> t b")
-                    # val_loss = cross_entropy(model(X), Y)
-                    # metric["validation_loss"] = loss.mean().item()
-                    # if val_loss < best_val_loss:
-                    #     best_val = val_loss
-                    #     import os
-                    #     best_path = os.path.join(config["ckpt_dir"], config['job_name'], "best.pt")
-                    #     save_checkpoint(model, optim, best_path)
-                    #     wandb.log({"ckpt/best_val": best_val}, step=global_step)
-                    pass
+                    X, Y = get_batch(validation_dataset, context_length, batch_size, device)
+                    X = X.long().to(device)
+                    Y = Y.long().to(device)
+                    X = model(X)  # B, T, V
+                    X = rearrange(X, "b t v -> t b v")
+                    Y = rearrange(Y, "b t -> t b")
+                    val_loss = cross_entropy(X, Y)
+                    metric["validation_loss"] = loss.mean().item()
+                    if val_loss < best_val_loss:
+                        best_val = val_loss
+                        best_path = os.path.join(config["ckpt_dir"], config['job_name'], "best.pt")
+                        save_checkpoint(model, optim, global_step, best_path)
+                        wandb.log({"ckpt/best_val": best_val}, step=global_step)
 
                 # ---- Periodic checkpoint
                 if global_step % config["ckpt_every"] == 0:
