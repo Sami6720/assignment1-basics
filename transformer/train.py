@@ -11,6 +11,21 @@ from transformers import PreTrainedTokenizerFast
 import os
 from time import time
 
+def get_parameter_norm(model, norm_type=2):
+    total_norm = 0.0
+    for p in model.parameters():
+        param_norm = p.data.norm(norm_type)
+        total_norm += param_norm.item() ** norm_type
+    return total_norm ** (1.0 / norm_type)
+
+def get_gradient_norm(model, norm_type=2):
+    total_norm = 0.0
+    for p in model.parameters():
+        if p.grad is not None:
+            grad_norm = p.grad.data.norm(norm_type)
+            total_norm += grad_norm.item() ** norm_type
+    return total_norm ** (1.0 / norm_type)
+
 def train(config):
 
         d_model = config["d_model"]
@@ -102,6 +117,9 @@ def train(config):
                         best_path = os.path.join(config["ckpt_dir"], config['job_name'], "best.pt")
                         save_checkpoint(model, optim, global_step, best_path)
                         wandb.log({"ckpt/best_val": best_val}, step=global_step)
+                    metric["model/param_norm"] = get_parameter_norm(model)
+                    metric["model/grad_norm"] = get_gradient_norm(model)
+
 
                 # ---- Periodic checkpoint
                 if global_step % config["ckpt_every"] == 0:
