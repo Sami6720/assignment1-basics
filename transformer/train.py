@@ -113,10 +113,10 @@ def train(config):
                     val_loss = cross_entropy(X, Y)
                     metric["validation_loss"] = loss.mean().item()
                     if val_loss < best_val_loss:
-                        best_val = val_loss
+                        best_val_loss = val_loss
                         best_path = os.path.join(config["ckpt_dir"], config['job_name'], "best.pt")
                         save_checkpoint(model, optim, global_step, best_path)
-                        wandb.log({"ckpt/best_val": best_val}, step=global_step)
+                        wandb.log({"ckpt/best_val": best_val_loss}, step=global_step)
                     metric["model/param_norm"] = get_parameter_norm(model)
                     metric["model/grad_norm"] = get_gradient_norm(model)
 
