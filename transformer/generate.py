@@ -99,23 +99,24 @@ if __name__ == '__main__':
     if tok is not None:
         model.tokenizer = tok
         model.eot_id = tok.convert_tokens_to_ids("<|endoftext|>")
-    state_dict = torch.load(checkpoint_path)
+    state_dict = torch.load(checkpoint_path)['model_state']
 
-    model.load_state_dict(state_dict, strict=False)
+    model.load_state_dict(state_dict, strict=True)
 
 
     model.eval()
 
-    extra = 'last' if 'last' in checkpoint_path else 'best_val'
+    extra = checkpoint_path.split('/')[-1].split('.')[0]
+    print(extra)
 
-    gen_path = '/'.join(checkpoint_path.split('/')[:-1]) +"/"+ extra + '_' + 'gen.txt'
+    gen_path = '/'.join(checkpoint_path.split('/')[:-1]) +"/"+ extra + '_' + f'gen_strat_{config["gen_strategy"]}_'+ 'gen.txt'
 
     with open(gen_path, 'w') as f:
 
         for i in range(5):
             f.write(f"Generation {i}\n")
             print(f"Generation {i}")
-            gen = model.generate("<|endoftext|>", max_generation_len=120, strategy='temp_scaled_softmax', temp=0.8, )
+            gen = model.generate("<|endoftext|>", max_generation_len=250, strategy=config['gen_strategy'], temp=0.01, )
             print(gen)
             f.write(gen)
             f.write("\n\n")
