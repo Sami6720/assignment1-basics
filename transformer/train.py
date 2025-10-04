@@ -122,30 +122,34 @@ def train(config):
 
 
                 # ---- Periodic checkpoint
-                if global_step % config["ckpt_every"] == 0:
-                    path = os.path.join(config["ckpt_dir"], config['job_name'],f"step_{global_step}.pt")
-                    save_checkpoint(model, optim, global_step, path)
+                # if global_step % config["ckpt_every"] == 0:
+                #     path = os.path.join(config["ckpt_dir"], config['job_name'],f"step_{global_step}.pt")
+                #     save_checkpoint(model, optim, global_step, path)
 
 
 
                 if (j + 1) % config["wandb_log_interval"] == 0:
                     wandb.log(metric, step=global_step)
 
-                if ((j+1) % config["sample_every"]) == 0:
-                    prompt = args.get("sample_prompt", "<|endoftext|>")
-                    # you can switch strategy: 'temp_scaled_softmax' or 'top_p'
-                    text = model.generate(
-                        input_prompt=prompt,
-                        strategy=args.get("gen_strategy", "temp_scaled_softmax"),
-                        temp=args.get("temp", 0.8),
-                        max_generation_len=args.get("max_new_tokens", 128),
-                    )
+                # if ((j+1) % config["sample_every"]) == 0:
+                #     prompt = args.get("sample_prompt", "<|endoftext|>")
+                #     # you can switch strategy: 'temp_scaled_softmax' or 'top_p'
+                #     text = model.generate(
+                #         input_prompt=prompt,
+                #         strategy=args.get("gen_strategy", "temp_scaled_softmax"),
+                #         temp=args.get("temp", 0.8),
+                #         max_generation_len=args.get("max_new_tokens", 128),
+                #     )
+                #
+                #     wandb.log(
+                #         {"samples/text": wandb.Html(f"<pre>{text}</pre>"), "samples/prompt": prompt},
+                #         step=global_step
+                #     )
+                #     # print(f"Training step {j + 1}, sample generation: {text}")
 
-                    wandb.log(
-                        {"samples/text": wandb.Html(f"<pre>{text}</pre>"), "samples/prompt": prompt},
-                        step=global_step
-                    )
-                    # print(f"Training step {j + 1}, sample generation: {text}")
+
+        path = os.path.join(config["ckpt_dir"], config['job_name'],f"last.pt")
+        save_checkpoint(model, optim, global_step, path)
 
 if __name__ == '__main__':
 
@@ -170,13 +174,13 @@ if __name__ == '__main__':
     parser.add_argument("--num_layers", type=int, default=4,
                         help="Number of transformer layers.")
 
-    parser.add_argument("--num_epochs", type=int, default=4,
+    parser.add_argument("--num_epochs", type=int, default=1,
                         help="Num of training epochs")
 
     parser.add_argument("--num_heads", type=int, default=16,
                         help="Number of attention heads.")
 
-    parser.add_argument("--batch_size", type=int, default=4,
+    parser.add_argument("--batch_size", type=int, default=32,
                         help="Minibatch size")
 
     parser.add_argument("--total_tokens", type=int, default=327_680_000,
@@ -187,7 +191,7 @@ if __name__ == '__main__':
 
     parser.add_argument("--wandb_log_interval", type=int, default=100,
                         help="Wandb log interval")
-    parser.add_argument("--validate_every_x_steps", type=int, default=1000,
+    parser.add_argument("--validate_every_x_steps", type=int, default=100,
                         help="How often to validate.")
 
     parser.add_argument("--checkpoint_path", type=str, default=None)
@@ -195,7 +199,7 @@ if __name__ == '__main__':
     parser.add_argument("--device", type=str, default="cuda")
 
     parser.add_argument("--tokenizer_dir", type=str, default="tok_tinystories")
-    parser.add_argument("--sample_every", type=int, default=10)
+    parser.add_argument("--sample_every", type=int, default=30_000)
     parser.add_argument("--sample_prompt", type=str, default="<|endoftext|>")
     parser.add_argument("--gen_strategy", type=str, default="temp_scaled_softmax", choices=["temp_scaled_softmax","top_p"])
     parser.add_argument("--temp", type=float, default=0.8)
