@@ -113,10 +113,10 @@ if __name__ == '__main__':
     with open(gen_path, 'w') as f:
 
         for i in range(5):
-            f.write(f"Generation {i}")
+            f.write(f"Generation {i}\n")
             print(f"Generation {i}")
-            gen = model.generate("Once upon a time", max_generation_len=200)
+            gen = model.generate("<|endoftext|>", max_generation_len=120, strategy='temp_scaled_softmax', temp=0.8, )
             print(gen)
             f.write(gen)
-            f.write("\n")
+            f.write("\n\n")
 
